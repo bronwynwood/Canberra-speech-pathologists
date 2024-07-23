@@ -1,0 +1,395 @@
+---
+title: "GIS"
+author: "Bronwyn Wood"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE)
+library(sf)
+library(rvest)
+library(jsonlite)
+library(dplyr)
+library(ggplot2)
+```
+
+## Retrieve and save the geojson files
+
+```{r Create function to retrieve and save geojson files}
+# Define the function to extract, save, and read GeoJSON data from a URL
+extract_and_save_geojson <- function(url, save_path = "Maps") {
+    # Create the save directory if it doesn't exist
+    if (!dir.exists(save_path)) {
+        dir.create(save_path, recursive = TRUE)
+    }
+    
+    # Read the web page
+    page <- read_html(url)
+    
+    # Extract all script tags
+    scripts <- page %>% html_nodes("script") %>% html_text()
+    
+    # Find the script containing GeoJSON
+    geojson_script <- grep("const data =", scripts, value = TRUE)
+    
+    # Extract the GeoJSON data string
+    geojson_data <- sub(".*const data = '(.*)';.*", "\\1", geojson_script)
+    
+    # Remove escape characters and extra quotes
+    geojson_data_clean <- gsub("\\\\", "", geojson_data)
+    geojson_data_clean <- gsub('^"|"$', '', geojson_data_clean)
+    
+    # Validate the JSON format using jsonlite
+    geojson_list <- fromJSON(geojson_data_clean)
+    
+    # Convert list back to JSON string (if needed)
+    geojson_string <- toJSON(geojson_list, auto_unbox = TRUE, pretty = TRUE)
+    
+    # Extract the number from the URL to construct the filename
+    file_number <- sub(".*/items/(.*)$", "\\1", url)
+    file_path <- file.path(save_path, paste0(file_number, ".geojson"))
+    
+    # Write the GeoJSON data to a file
+    write(geojson_string, file_path)
+    
+    # Optionally read the GeoJSON data using sf
+    geojson_sf <- st_read(file_path, quiet = TRUE)
+    
+    return(geojson_sf)
+}
+```
+
+This function requires that the indices for the desired map files are stored in a csv file called "Locations.csv", with (minimally): 
+- a column called "category" containing [SA1, SA2, SA3]
+- a column called "lookup" containing the numerical id string for the map
+
+My file is structured:
+reason | category | SA3_code | SA3_title | SA2_code | SA3_title | lookup | locality_name | tertiary_region | secondary_region | top_level_region | description
+Where:
+- "reason" is one of [settlement, exclude, landmark, region, unoccupied, suburb]
+- "category" is one of [SA1, SA2, SA3]
+- "SA3_code" is the numerical string for the SA3 category and "SA3_title" is the name of the group in the dataset
+- "SA2_code" is the numerical string for the SA2 category and "SA2_title" is the name of the group in the dataset
+- "lookup" is the numerical id string for the specific map
+- "locality_name" is the name for each grouped location that I want to work with (e.g. suburb, town, region grouping)
+- "tertiary_region" is the name of the desired lower-level region
+- "secondary_region" is the name of the desired mid-level region
+- "top_level_region" is the name of the desired top-level region
+- "description" contains any other information (e.g. "Gungahlin West refers to Kinleyside")
+
+```{r Construct list of urls to retrieve}
+# Read your table (assuming it is in a CSV file)
+# Replace 'your_table.csv' with the actual file name or path to your CSV file
+table <- read.csv("Locations.csv", header = TRUE)
+
+# Check the structure of the table
+str(table)
+
+# Create the URLs
+table <- table %>%
+  mutate(url = paste0("https://asgs.linked.fsdf.org.au/dataset/asgsed3/collections/SA1/items/", lookup))
+
+# View the resulting table with the URLs
+head(table$url)
+
+# Extract the list of URLs
+urls <- table$url
+
+# Print the list of URLs
+# print(urls)
+```
+
+This function requires an existing subfolder called "Maps". An error will occur if this subfolder does not already exist. This operation takes about 15 minutes for me.
+
+```{r Apply retrieve function to the urls}
+# Apply the function to each URL and combine the results
+geojson_list <- lapply(urls, extract_and_save_geojson)
+```
+
+## Script to identify problematic files
+
+My dataset had 11 files that were consistently causing problems with later operations. I tried *many* approaches to try and resolve these within R, but was unsuccessful. In the end, I ran this function to identify the problematic files and then fixed them in QGIS, using the 'Vector geometry' > 'Fix geometries' and 'Vector geometry' > 'Check validity' functions, and then exporting the results and re-adding these to the dataset.
+
+It is possible to automate this using a Python script, but I don't have these skills.
+
+```{r Script to identify problematic files}
+# Function to validate geometries and log problematic files
+validate_and_log_problems <- function(input_files) {
+  problematic_files <- list()
+  
+  for (file in input_files) {
+    tryCatch({
+      geom <- st_read(file, quiet = TRUE)
+      geom <- st_make_valid(geom)
+      
+      # Check if geometries are valid
+      if (any(!st_is_valid(geom))) {
+        problematic_files <- c(problematic_files, file)
+        message(sprintf("Invalid geometries found in file: %s", file))
+      }
+      
+    }, error = function(e) {
+      message(sprintf("Error processing file %s: %s", file, e$message))
+      problematic_files <- c(problematic_files, file)
+    })
+  }
+  
+  return(problematic_files)
+}
+
+# List all GeoJSON files
+all_files <- list.files("Maps", pattern = "\\.geojson$", full.names = TRUE)
+
+# Validate and log problematic files
+problematic_files <- validate_and_log_problems(all_files)
+```
+
+## Combine and group files based on locality
+
+```{r Create function to combine geojson files}
+unite_geojson_files <- function(input_files, output_file) {
+  # Read all GeoJSON files into a list
+  geojson_list <- lapply(input_files, st_read)
+  
+  # Combine all GeoJSON files in the list
+  combined_geojson <- do.call(rbind, geojson_list)
+  
+  # Save the combined GeoJSON file
+  st_write(combined_geojson, output_file)
+}
+```
+
+This function requires that the indices for the desired map files are stored in a csv file called "Locations.csv", with (minimally): 
+- a column called "lookup" containing the numerical id string for the map
+- a column called "locality_name" containing the names of the desired groups (e.g. the name of the larger town or region)
+
+```{r Retrieve list of files to combine}
+table <- read.csv("Locations.csv")
+
+# Create the file paths based on lookup
+table$FilePath <- paste0("Maps/", table$lookup, ".geojson")
+```
+
+This function requires an existing subfolder called "Localities". An error will occur if this subfolder does not already exist.
+
+```{r Group files and apply combine geojson function to groups}
+# Create a function to process each group
+process_group <- function(group, group_name) {
+  input_files <- group$FilePath
+  
+  # Check if the group has only one file
+  if (length(input_files) == 1) {
+    # Copy the single file to the output location
+    file.copy(input_files, paste0("Localities/", group_name, ".geojson"))
+  } else {
+    # Combine the files and write the output
+    output_file <- paste0("Localities/", group_name, ".geojson")
+    unite_geojson_files(input_files, output_file)
+  }
+}
+
+# Apply the function to each group
+invisible(table %>%
+  group_by(locality_name) %>%
+  group_walk(~ process_group(.x, .y$locality_name))
+)
+```
+
+## Clean geometries and combine to create the files for larger regions
+
+```{r Clean geometries and combine for larger localities}
+# Function to clean invalid geometries
+clean_geometries <- function(geom_sf) {
+  tryCatch({
+    # Attempt to fix invalid geometries
+    geom_sf <- st_make_valid(geom_sf)
+    
+    # Remove empty geometries
+    geom_sf <- geom_sf[!st_is_empty(geom_sf), ]
+    
+    if (nrow(geom_sf) == 0) {
+      return(NULL)  # Return NULL if no valid geometries
+    }
+    
+    return(geom_sf)
+  }, error = function(e) {
+    message(sprintf("Error in cleaning geometries: %s", e$message))
+    return(NULL)
+  })
+}
+
+# Function to unite multiple GeoJSON files into one with dissolved boundaries
+unite_geojson_files <- function(input_files, output_file) {
+  tryCatch({
+    message(sprintf("Combining files: %s", paste(input_files, collapse = ", ")))
+    
+    combined_list <- lapply(input_files, function(file) {
+      message(sprintf("Processing file: %s", file))
+      
+      tryCatch({
+        # Read GeoJSON as sf object
+        geom_sf <- st_read(file, quiet = TRUE)
+        
+        # Clean geometries
+        valid_geom <- clean_geometries(geom_sf)
+        
+        if (is.null(valid_geom)) {
+          message(sprintf("No valid geometries found in file: %s", file))
+        }
+        
+        return(valid_geom)
+      }, error = function(e) {
+        message(sprintf("Error reading file %s: %s", file, e$message))
+        return(NULL)
+      })
+    })
+    
+    # Remove NULL entries (files with only invalid geometries)
+    combined_list <- Filter(Negate(is.null), combined_list)
+    
+    if (length(combined_list) == 0) {
+      message("No valid geometries to combine.")
+      return(NULL)
+    }
+    
+    # Combine all valid geometries
+    combined <- do.call(rbind, combined_list)
+    
+    # Debug: Inspect combined geometries
+    message(sprintf("Combined geometries: %d features", nrow(combined)))
+    
+    # Perform union on the combined geometries
+    tryCatch({
+      dissolved <- st_union(combined)
+      
+      # Create output directory if it doesn't exist
+      dir.create(dirname(output_file), showWarnings = FALSE, recursive = TRUE)
+      
+      # Write the dissolved geometry to GeoJSON
+      st_write(dissolved, output_file, quiet = TRUE)
+      message(sprintf("Successfully created combined GeoJSON: %s", output_file))
+    }, error = function(e) {
+      message(sprintf("Error during union: %s", e$message))
+      
+      # Write combined (non-unioned) geometry if union fails
+      dir.create(dirname(output_file), showWarnings = FALSE, recursive = TRUE)
+      st_write(combined, output_file, quiet = TRUE)
+      message(sprintf("Successfully created combined GeoJSON without union: %s", output_file))
+    })
+    
+  }, error = function(e) {
+    message(sprintf("Error processing files: %s", e$message))
+  })
+}
+
+# Function to process groups
+process_groups <- function(grouping_column, output_folder) {
+  table %>%
+    group_by(across(all_of(grouping_column))) %>%
+    group_walk(~ {
+      group_name <- .y[[grouping_column]]
+      message(sprintf("Processing group: %s = %s", grouping_column, group_name))
+      input_files <- .x$FilePath
+      message(sprintf("Input files: %s", paste(input_files, collapse = ", ")))
+      
+      if (length(input_files) > 0) {
+        output_file <- paste0(output_folder, "/", group_name, ".geojson")
+        
+        if (length(input_files) == 1) {
+          file.copy(input_files, output_file)
+          message(sprintf("Copied single file to: %s", output_file))
+        } else {
+          unite_geojson_files(input_files, output_file)
+        }
+      } else {
+        message(sprintf("No files to process for %s = %s", grouping_column, group_name))
+      }
+    })
+}
+
+# Process groupings based on ColumnL
+message("Starting processing for top level")
+process_groups("top_level_region", "top_level_maps")
+message("Finished processing for top level")
+
+# Process groupings based on ColumnJ
+message("Starting processing for secondary level")
+process_groups("secondary_region", "secondary_level_maps")
+message("Finished processing for secondary level")
+
+# Process groupings based on ColumnH
+message("Starting processing for tertiary level")
+process_groups("tertiary_region", "tertiary_level_maps")
+message("Finished processing for tertiary level")
+
+
+```
+
+## Plot maps using ggplot (to check)
+
+```{r Create function to plot combined geojson files using ggplot}
+# Function to plot GeoJSON files
+plot_geojson <- function(geojson_file, output_dir) {
+  tryCatch({
+    # Read the GeoJSON file
+    geo_data <- st_read(geojson_file, quiet = TRUE)
+    
+    # Create the plot
+    p <- ggplot() +
+      geom_sf(data = geo_data) +
+      ggtitle(basename(geojson_file))
+    
+    # Ensure the output directory exists
+    dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+    
+    # Save the plot
+    output_file <- file.path(output_dir, paste0(tools::file_path_sans_ext(basename(geojson_file)), ".png"))
+    ggsave(output_file, p, width = 8, height = 6)
+    
+    message(sprintf("Successfully created plot: %s", output_file))
+  }, error = function(e) {
+    message(sprintf("Error plotting file %s: %s", geojson_file, e$message))
+  })
+}
+
+# Loop over a list of files with more detailed diagnostics
+geojson_files <- list.files(path = "top_level_maps", pattern = "\\.geojson$", full.names = TRUE)
+output_dir <- "Plots"
+
+for (file in geojson_files) {
+  message(sprintf("Starting processing for file: %s", file))
+  flush.console()
+  plot_geojson(file, output_dir)
+  message(sprintf("Completed processing for file: %s", file))
+  flush.console()
+}
+
+# Loop over a list of files with more detailed diagnostics
+geojson_files <- list.files(path = "secondary_level_maps", pattern = "\\.geojson$", full.names = TRUE)
+output_dir <- "Plots"
+
+for (file in geojson_files) {
+  message(sprintf("Starting processing for file: %s", file))
+  flush.console()
+  plot_geojson(file, output_dir)
+  message(sprintf("Completed processing for file: %s", file))
+  flush.console()
+}
+
+# Loop over a list of files with more detailed diagnostics
+geojson_files <- list.files(path = "tertiary_level_maps", pattern = "\\.geojson$", full.names = TRUE)
+output_dir <- "Plots"
+
+for (file in geojson_files) {
+  message(sprintf("Starting processing for file: %s", file))
+  flush.console()
+  plot_geojson(file, output_dir)
+  message(sprintf("Completed processing for file: %s", file))
+  flush.console()
+}
+
+message("Plots have been created and saved in the 'Plots' directory.")
+
+```
+
