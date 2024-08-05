@@ -1,0 +1,447 @@
+---
+title: "Prepare survey data"
+author: "Bronwyn Wood"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Load and clean data
+
+```{r load data}
+# Load data
+survey <- read.csv("Survey.csv", header = TRUE)
+survey <- survey[-c(1), -(1:17)]
+survey[survey == ""] <- NA
+survey <- survey %>%
+  filter(rowSums(is.na(.)) < ncol(survey))
+```
+
+```{r  clean data}
+# Consolidate communication degrees
+survey$Q3_4 <- as.character(survey$Q3_4)
+survey <- survey %>%
+  mutate(Q3_4 = ifelse(grepl("communication", Q4, ignore.case = TRUE), "Communication", Q3_4))
+survey$Q3_4 <- as.factor(survey$Q3_4)
+
+# Consolidate business degrees
+survey$Q3_10 <- as.character(survey$Q3_10)
+survey <- survey %>%
+  mutate(Q3_10 = ifelse(grepl("business", Q4, ignore.case = TRUE), "Business or Commerce", Q3_10))
+survey <- survey %>%
+  mutate(Q3_10 = ifelse(grepl("commerce", Q4, ignore.case = TRUE), "Business or Commerce", Q3_10))
+survey$Q3_10 <- as.factor(survey$Q3_10)
+
+# Consolidate drama degrees
+survey$Q3_9 <- as.character(survey$Q3_9)
+survey <- survey %>%
+  mutate(Q3_9 = ifelse(grepl("performing", Q4, ignore.case = TRUE), "Drama or Acting", Q3_9))
+survey$Q3_9 <- as.factor(survey$Q3_9)
+```
+
+```{r  rename factor levels}
+# Rename private practice
+survey <- survey %>%
+  mutate(Q5_3 = ifelse(is.na(Q5_3), Q5_3, "Private practice - sole practitioner"))
+
+# Rename private practice - group
+survey <- survey %>%
+  mutate(Q5_15 = ifelse(is.na(Q5_15), Q5_15, "Private practice - multiple practitioners"))
+
+# Rename community health
+survey <- survey %>%
+  mutate(Q5_5 = ifelse(is.na(Q5_5), Q5_5, "Community health (Public)"))
+
+# Rename other private sector
+survey <- survey %>%
+  mutate(Q5_13 = ifelse(is.na(Q5_13), Q5_13, "Other private sector (Non-clinical)"))
+
+# Rename public hospital
+survey <- survey %>%
+  mutate(Q5_1 = ifelse(is.na(Q5_1), Q5_1, "Hospital (Public)"))
+
+# Rename individual school
+survey <- survey %>%
+  mutate(Q5_2 = ifelse(is.na(Q5_2), Q5_2, "School"))
+```
+
+```{r  rename locations}
+# Rename Belconnen
+survey <- survey %>%
+  mutate(Q6_1 = ifelse(is.na(Q6_1), Q6_1, "Belconnen Region"))
+
+# Rename Gungahlin
+survey <- survey %>%
+  mutate(Q6_3 = ifelse(is.na(Q6_3), Q6_3, "Gungahlin Region"))
+
+# Rename North Canberra
+survey <- survey %>%
+  mutate(Q6_4 = ifelse(is.na(Q6_4), Q6_4, "North Canberra Region"))
+
+# Rename South Canberra
+survey <- survey %>%
+  mutate(Q6_5 = ifelse(is.na(Q6_5), Q6_5, "South Canberra Region"))
+
+# Rename Woden
+survey <- survey %>%
+  mutate(Q6_6 = ifelse(is.na(Q6_6), Q6_6, "Woden Valley Region"))
+
+# Rename Weston Creek
+survey <- survey %>%
+  mutate(Q6_7 = ifelse(is.na(Q6_7), Q6_7, "Weston Creek Region"))
+
+# Rename Molonglo Valley
+survey <- survey %>%
+  mutate(Q6_8 = ifelse(is.na(Q6_8), Q6_8, "Molonglo Valley Region"))
+
+# Rename Tuggernanong
+survey <- survey %>%
+  mutate(Q6_9 = ifelse(is.na(Q6_9), Q6_9, "Tuggeranong Region"))
+
+# Rename Queanbeyan
+survey <- survey %>%
+  mutate(Q6_11 = ifelse(is.na(Q6_11), Q6_11, "Queanbeyan Region"))
+
+# Rename Braidwood
+survey <- survey %>%
+  mutate(Q6_12 = ifelse(is.na(Q6_12), Q6_12, "Bungendore - Braidwood & Regions"))
+
+# Rename Yass
+survey <- survey %>%
+  mutate(Q6_14 = ifelse(is.na(Q6_14), Q6_14, "Yass Valley Region"))
+
+# Rename Cooma
+survey <- survey %>%
+  mutate(Q6_15 = ifelse(is.na(Q6_15), Q6_15, "Cooma - Monaro Region"))
+
+# Rename Batemans
+survey <- survey %>%
+  mutate(Q6_16 = ifelse(is.na(Q6_16), Q6_16, "Batemans Bay - Moruya - Narooma & Regions"))
+
+# Rename Ulladulla
+survey <- survey %>%
+  mutate(Q6_17 = ifelse(is.na(Q6_17), Q6_17, "Ulladulla - Sussex Inlet - Jervis Bay & Regions"))
+
+# Rename Goulburn
+survey <- survey %>%
+  mutate(Q6_18 = ifelse(is.na(Q6_18), Q6_18, "Goulburn - Mulwaree Region"))
+```
+
+```{r  rename roles}
+# Rename clinician
+survey <- survey %>%
+  mutate(Q7_1 = ifelse(is.na(Q7_1), Q7_1, "Clinician"))
+
+# Rename product design
+survey <- survey %>%
+  mutate(Q7_11 = ifelse(is.na(Q7_11), Q7_11, "Other - product design"))
+
+# Rename technology
+survey <- survey %>%
+  mutate(Q7_12 = ifelse(is.na(Q7_12), Q7_12, "Other - technology"))
+```
+
+```{r convert to factors}
+# Convert all character columns to factors
+survey <- survey %>%
+  mutate_if(is.character, as.factor)
+```
+
+```{r  rename columns}
+survey$Q2_1 <- as.numeric(as.character(survey$Q2_1))
+survey$"Years since qualification" <- 2024-survey$Q2_1
+survey$"Career stage" <- cut(survey$"Years since qualification",
+                             breaks = c(-Inf, 3, 15, 30, Inf),
+                             labels = c("Early career (0-2 years)", "Established career (3-14 years)", 
+                                        "Mid career (15-29 years)", "Late career (30 years or more)"))
+survey$"Career stage" <- ordered(survey$"Career stage", levels = c("Early career (0-2 years)", 
+                                                                   "Established career (3-14 years)", "Mid career (15-29 years)", 
+                                                                   "Late career (30 years or more)"))
+survey$"Years in current role" <- as.numeric(as.character(survey$Q19_1))
+survey$"Hours worked per week" <- survey$Q18
+survey$"Hours worked per week" <- ordered(survey$"Hours worked per week", levels = c("0-8 hours per week", 
+                                                                                     "8-20 hours per week", "20-35 hours per week", 
+                                                                                     "35 or more hours per week"))
+survey <- within(survey, rm(Q19_1, Q2_1, Q1, Q18))
+```
+
+```{r  coalesce sections of data}
+# Coalesce
+survey <- survey %>%
+  mutate(across(c(Q3_1, Q3_2, Q3_3, Q3_4, Q3_5, Q3_7, Q3_8, Q3_9), as.character)) %>%
+  mutate(`Other qualifications` = coalesce(Q3_1, Q3_2, Q3_3, Q3_4, Q3_5, Q3_7, Q3_8, Q3_9)) %>%
+  mutate(`Other qualifications` = ifelse(is.na(`Other qualifications`), "not applicable", `Other qualifications`))
+survey$`Other qualifications` <- as.factor(survey$`Other qualifications`)
+
+survey <- survey %>%
+  mutate("Work setting" = coalesce(Q5_1, Q5_2, Q5_3, Q5_4, Q5_5, Q5_6, Q5_7, Q5_8, Q5_9,
+                                   Q5_10, Q5_11, Q5_12, Q5_13, Q5_14, Q5_15, Q5_16))
+
+survey <- survey %>%
+  mutate("Current role" = coalesce(Q7_1, Q7_2, Q7_3, Q7_4, Q7_5, Q7_6, Q7_7, Q7_8, Q7_9, 
+                                   Q7_10, Q7_11, Q7_12, Q7_13))
+
+survey <- survey %>%
+  mutate(`Location of work` = if_else(
+    !is.na(Q6_1) | !is.na(Q6_3) | !is.na(Q6_4) | !is.na(Q6_5) | !is.na(Q6_6) | !is.na(Q6_7) | 
+      !is.na(Q6_8) | !is.na(Q6_9) | !is.na(Q6_11),
+    "Canberra - Queanbeyan Region",
+    NA_character_  # Ensure NA is a character
+  ))
+survey <- survey %>%
+  mutate(`Location of work` = if_else(
+    is.na(`Location of work`),
+    coalesce(Q6_1, Q6_3, Q6_4, Q6_5, Q6_6, Q6_7, Q6_8, Q6_9, 
+             Q6_11, Q6_12, Q6_14, Q6_15, Q6_16, Q6_17, Q6_18),
+    `Location of work`  # Keep existing value if 'Location of work' is not NA
+  ))
+survey$`Location of work` <- as.factor(survey$`Location of work`)
+```
+
+```{r  rename scenario columns}
+# Rename scenario columns
+# Old and new column names
+old_names <- c("Q9_1", "Q9_2", "Q9_3", "Q9_4", "Q9_5", "Q9_6",
+               "Q16_1", "Q16_2", "Q16_3", "Q16_4", "Q16_5", "Q16_6",
+               "Q15_1", "Q15_2", "Q15_3", "Q15_4", "Q15_5", "Q15_6",
+               "Q14_1", "Q14_2", "Q14_3", "Q14_4", "Q14_5", "Q14_6")
+new_names <- c("3 week old with cleft, not gaining weight", 
+               "14mo with cerebral palsy, not able to vocalise",
+               "18mo not speaking yet, recent grommets",
+               "28mo with suspected autism, has few words",
+               "3 1/2yo, recently started stuttering",
+               "4yo, unclear speech",
+               "7yo, difficulty following directions and learning to read",
+               "10yo, ongoing language disorder associated with intellectual disability",
+               "12yo nonspeaking individual, transitioning to high school",
+               "14yo, ongoing stuttering",
+               "16yo with cochlear implants, lisp",
+               "17yo with DLD, preparing for senior secondary assessments",
+               "19yo with intellectual disability, difficulty transitioning to day program",
+               "22yo with new autism diagnosis, has been recommended speech therapy",
+               "23yo teacher, suspected vocal nodules",
+               "24yo, communicating less and has not touched AAC since leaving school",
+               "31yo, gender-affirming voice",
+               "34yo, one month post-TBI",
+               "51yo with early stage ALS",
+               "59yo, three weeks post stroke, returning home with ongoing dysphagia",
+               "63yo, new Parkinson's diagnosis",
+               "68yo with aphasia, eight months post-stroke",
+               "78yo with Alzheimer's, moving into residential aged care",
+               "96yo with new concerns around swallowing")
+
+old_cats <- c("Q10", "Q11", "Q12", "Q13")
+new_cats <- c("Works with young children (0-5 years)", "Works with school-aged children (6-18 years)",
+              "Works with adults (18-40 years)", "Works with adults (aged over 40)")
+
+# Create a named vector for renaming
+rename_vector <- setNames(new_names, old_names)
+rename_cats <- setNames(new_cats, old_cats)
+
+# Rename columns
+colnames(survey) <- ifelse(colnames(survey) %in% old_names,
+                           rename_vector[colnames(survey)],
+                           colnames(survey))
+colnames(survey) <- ifelse(colnames(survey) %in% old_cats,
+                           rename_cats[colnames(survey)],
+                           colnames(survey))
+```
+
+```{r  recode factors}
+# Define the recoding function
+recode_factors <- function(factor_col) {
+  # Convert factor to character
+  char_col <- as.character(factor_col)
+  
+  # Recode values
+  char_col[char_col %in% c("would not be able to see this client", "would not see this client across my work settings")] <- "not applicable (would not be able to see this client)"
+  
+  # Convert character back to factor with new levels
+  factor(char_col, levels = unique(c("not applicable (would not be able to see this client)", setdiff(unique(factor_col), c("would not be able to see this client", "would not see this client across my work settings")))))
+}
+
+# Apply recoding function to specified columns
+survey[new_names] <- lapply(survey[new_names], recode_factors)
+
+# Define the common levels and order
+common_levels <- c("within 2 weeks", "within 6 weeks", "within 3 months", "3-6 months", 
+                   "6-12 months", "more than 12 months", "not applicable (would not be able to see this client)")
+
+# Reorder factor levels across specified columns
+survey[new_names] <- lapply(survey[new_names], function(col) {
+  if (is.factor(col)) {
+    factor(col, levels = common_levels)
+  } else {
+    col
+  }
+})
+```
+
+```{r  create long pivots}
+# Create long pivots
+list_worksettings <- c("Q5_1", "Q5_2", "Q5_3", "Q5_4", "Q5_5", "Q5_6", "Q5_7", "Q5_8", "Q5_9",
+                       "Q5_10", "Q5_11", "Q5_12", "Q5_13", "Q5_14", "Q5_15", "Q5_16")
+df_worksetting <- survey %>%
+  pivot_longer(cols = all_of(list_worksettings), values_to = "workplace")
+df_worksetting <- df_worksetting[!is.na(df_worksetting$workplace),]
+dropcols <- !names(df_worksetting) %in% list_worksettings
+df_worksetting <- df_worksetting[,dropcols]
+df_worksetting <- within(df_worksetting, rm(name))
+list_quals <- !names(df_worksetting) %in% c("Q3_1", "Q3_2", "Q3_3", "Q3_4", "Q3_5", "Q3_7", 
+                                            "Q3_8", "Q3_9", "Q4")
+df_worksetting <- df_worksetting[,list_quals]
+list_worksettings <- !names(df_worksetting) %in% c("Q5_1", "Q5_2", "Q5_3", "Q5_4", "Q5_5", "Q5_6", "Q5_7", "Q5_8", "Q5_9",
+                                                   "Q5_10", "Q5_11", "Q5_12", "Q5_13", "Q5_14", "Q5_15", "Q5_16")
+df_worksetting <- df_worksetting[,list_worksettings]
+list_roles <- !names(df_worksetting) %in% c("Q7_1", "Q7_2", "Q7_3", "Q7_4", "Q7_5", "Q7_6", "Q7_7", "Q7_8", "Q7_9", 
+                                            "Q7_10", "Q7_11", "Q7_12", "Q7_13")
+df_worksetting <- df_worksetting[,list_roles]
+list_locations <- !names(df_worksetting) %in% c("Q6_1", "Q6_3", "Q6_4", "Q6_5", "Q6_6", "Q6_7", "Q6_8", "Q6_9", 
+                                                "Q6_11", "Q6_12", "Q6_14", "Q6_15", "Q6_16", "Q6_17", "Q6_18")
+df_worksetting <- df_worksetting[,list_locations]
+df_worksetting <- within(df_worksetting, rm("Work setting"))
+df_worksetting$"Work setting" <- df_worksetting$workplace
+df_worksetting <- within(df_worksetting, rm(workplace))
+
+list_roles <- c("Q7_1", "Q7_2", "Q7_3", "Q7_4", "Q7_5", "Q7_6", "Q7_7", "Q7_8", "Q7_9", 
+                "Q7_10", "Q7_11", "Q7_12", "Q7_13")
+df_role <- survey %>%
+  pivot_longer(cols = all_of(list_roles), values_to = "role")
+df_role <- df_role[!is.na(df_role$role),]
+dropcols <- !names(df_role) %in% list_roles
+df_role <- df_role[,dropcols]
+df_role <- within(df_role, rm(name))
+list_quals <- !names(df_role) %in% c("Q3_1", "Q3_2", "Q3_3", "Q3_4", "Q3_5", "Q3_7", 
+                                     "Q3_8", "Q3_9", "Q4")
+df_role <- df_role[,list_quals]
+list_worksettings <- !names(df_role) %in% c("Q5_1", "Q5_2", "Q5_3", "Q5_4", "Q5_5", "Q5_6", "Q5_7", "Q5_8", "Q5_9",
+                                            "Q5_10", "Q5_11", "Q5_12", "Q5_13", "Q5_14", "Q5_15", "Q5_16")
+df_role <- df_role[,list_worksettings]
+list_roles <- !names(df_role) %in% c("Q7_1", "Q7_2", "Q7_3", "Q7_4", "Q7_5", "Q7_6", "Q7_7", "Q7_8", "Q7_9", 
+                                     "Q7_10", "Q7_11", "Q7_12", "Q7_13")
+df_role <- df_role[,list_roles]
+list_locations <- !names(df_role) %in% c("Q6_1", "Q6_3", "Q6_4", "Q6_5", "Q6_6", "Q6_7", "Q6_8", "Q6_9",
+                                         "Q6_11", "Q6_12", "Q6_14", "Q6_15", "Q6_16", "Q6_17", "Q6_18")
+df_role <- df_role[,list_locations]
+df_role <- within(df_role, rm("Current role"))
+df_role$"Current role" <- df_role$role
+df_role <- within(df_role, rm(role))
+
+list_locations <- c("Q6_1", "Q6_3", "Q6_4", "Q6_5", "Q6_6", "Q6_7", "Q6_8", "Q6_9", 
+                    "Q6_11", "Q6_12", "Q6_14", "Q6_15", "Q6_16", "Q6_17", "Q6_18")
+df_location <- survey %>%
+  pivot_longer(cols = all_of(list_locations), values_to = "location")
+df_location <- df_location[!is.na(df_location$location),]
+dropcols <- !names(df_location) %in% list_locations
+df_location <- df_location[,dropcols]
+df_location <- within(df_location, rm(name))
+list_quals <- !names(df_location) %in% c("Q3_1", "Q3_2", "Q3_3", "Q3_4", "Q3_5", "Q3_7", 
+                                         "Q3_8", "Q3_9", "Q4")
+df_location <- df_location[,list_quals]
+list_worksettings <- !names(df_location) %in% c("Q5_1", "Q5_2", "Q5_3", "Q5_4", "Q5_5", "Q5_6", "Q5_7", "Q5_8", "Q5_9",
+                                                "Q5_10", "Q5_11", "Q5_12", "Q5_13", "Q5_14", "Q5_15", "Q5_16")
+df_location <- df_location[,list_worksettings]
+list_roles <- !names(df_location) %in% c("Q7_1", "Q7_2", "Q7_3", "Q7_4", "Q7_5", "Q7_6", "Q7_7", "Q7_8", "Q7_9", 
+                                         "Q7_10", "Q7_11", "Q7_12", "Q7_13")
+df_location <- df_location[,list_roles]
+list_locations <- !names(df_location) %in% c("Q6_1", "Q6_3", "Q6_4", "Q6_5", "Q6_6", "Q6_7", "Q6_8", "Q6_9", 
+                                             "Q6_11", "Q6_12", "Q6_14", "Q6_15", "Q6_16", "Q6_17", "Q6_18")
+df_location <- df_location[,list_locations]
+df_location <- within(df_location, rm("Location of work"))
+df_location$"Location of work" <- df_location$location
+df_location <- within(df_location, rm(location))
+```
+
+```{r  drop unneeded columns}
+# Drop unneeded columns
+list_quals <- !names(survey) %in% c("Q3_1", "Q3_2", "Q3_3", "Q3_4", "Q3_5", "Q3_7", 
+                                    "Q3_8", "Q3_9", "Q4")
+survey <- survey[,list_quals]
+list_worksettings <- !names(survey) %in% c("Q5_1", "Q5_2", "Q5_3", "Q5_4", "Q5_5", "Q5_6", "Q5_7", "Q5_8", "Q5_9",
+                                           "Q5_10", "Q5_11", "Q5_12", "Q5_13", "Q5_14", "Q5_15", "Q5_16")
+survey <- survey[,list_worksettings]
+list_roles <- !names(survey) %in% c("Q7_1", "Q7_2", "Q7_3", "Q7_4", "Q7_5", "Q7_6", "Q7_7", "Q7_8", "Q7_9", 
+                                    "Q7_10", "Q7_11", "Q7_12", "Q7_13")
+survey <- survey[,list_roles]
+list_locations <- !names(survey) %in% c("Q6_1", "Q6_3", "Q6_4", "Q6_5", "Q6_6", "Q6_7", "Q6_8", "Q6_9", 
+                                        "Q6_11", "Q6_12", "Q6_14", "Q6_15", "Q6_16", "Q6_17", "Q6_18")
+survey <- survey[,list_locations]
+```
+
+```{r  separate workforce and services dataframes}
+# Separate workforce and services dataframes
+survey <- survey[, c("Years since qualification", "Career stage", "Years in current role", 
+                     "Hours worked per week", "Other qualifications", 
+                     "Work setting", "Current role", "Location of work", 
+                     "Works with young children (0-5 years)", "Works with school-aged children (6-18 years)", 
+                     "Works with adults (18-40 years)", "Works with adults (aged over 40)", 
+                     names(survey)[2:7], names(survey)[9:14], 
+                     names(survey)[16:21], names(survey)[23:28], "Q20", "Q17")]
+```
+
+```{r add location data}
+# Import locations df
+locations <- read.csv("locations.csv", header = TRUE, stringsAsFactors = TRUE)
+
+# Select columns to merge from locations
+locations <- locations %>%
+  select(overall_map, top_level_region, secondary_region)
+locations <- distinct(locations)
+
+cbr_locations <- c("Belconnen Region", "West Belconnon - Parkwood Region", "Gungahlin Region", "North Canberra Region",
+                   "South Canberra Region", "Woden Valley Region", "Weston Creek Region", "Tuggeranong Region",
+                   "Lanyon Valley Region", "Molonglo Valley Region", "East & Airport Region", "Queanbeyan Region",
+                   "Googong", "Hall", "Oaks Estate", "Uriarra Village", "Tharwa")
+
+# Divide dataframes for merge functionality
+cbr_df <- df_location[df_location$`Location of work` %in% cbr_locations,]
+
+`%not_in%` <- purrr::negate(`%in%`)
+regional_df <- df_location[df_location$`Location of work` %not_in% cbr_locations,]
+
+# Merge selected columns from locations into df_location
+cbr_combined <- cbr_df %>%
+  left_join(locations, by = c("Location of work" = "secondary_region")) %>%
+  distinct()
+cbr_combined$secondary_region <- cbr_combined$"Location of work"
+```
+
+```{r add regional location data}
+# Select columns to merge from locations
+locations <- locations %>%
+  select(overall_map, top_level_region)
+locations <- distinct(locations)
+
+# Merge selected columns from locations into df_location
+regional_combined <- regional_df %>%
+  left_join(locations, by = c("Location of work" = "top_level_region")) %>%
+  distinct()
+regional_combined$top_level_region <- regional_combined$"Location of work"
+```
+
+```{r recombine regions}
+services <- bind_rows(cbr_combined, regional_combined)
+
+services <- services[, c("Years since qualification", "Career stage", "Years in current role", 
+                     "Hours worked per week", "Other qualifications", 
+                     "Work setting", "Current role", "Location of work", 
+                     "Works with young children (0-5 years)", "Works with school-aged children (6-18 years)", 
+                     "Works with adults (18-40 years)", "Works with adults (aged over 40)", 
+                     names(services)[2:7], names(services)[9:14], 
+                     names(services)[16:21], names(services)[23:28], "overall_map", "top_level_region", "secondary_region")]
+```
+
+```{r workforce and service data}
+list_workforce <- !names(survey) %in% c(unlist(new_names), "Q20", "Q17")
+workforce <- survey[,list_workforce]
+
+list_services <- !names(survey) %in% c("Q20", "Q17")
+services <- survey[,list_services]
+
+rm(common_levels, dropcols, list_locations, list_quals, list_roles, list_worksettings, new_names, old_names, rename_vector, recode_factors, new_cats, old_cats, rename_cats, list_workforce)
+```
+
+```{r  write to file}
+write.csv(survey, file = "survey_data.csv", row.names = FALSE)
+write.csv(workforce, file = "workforce_data.csv", row.names = FALSE)
+write.csv(services, file = "service_data.csv", row.names = FALSE)
+```
